@@ -1,0 +1,5 @@
+aiohttp==3.7.3
+aiortc==1.1.2
+PyJWT==1.5.3
+python-dotenv==0.15.0
+websockets==8.1
