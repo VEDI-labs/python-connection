@@ -14,6 +14,8 @@ SERVER_URL = os.getenv('SERVER_URL')
 TOKEN_URL = os.getenv('TOKEN_URL')
 
 resilient_object = None
+channels = []
+
 def generate_token():
   # Read secret key
   secret_file = open('./src/master.key', 'r')
@@ -46,18 +48,18 @@ def connect_object(loop):
   loop.run_until_complete(resilient_object.listen())
   loop.run_forever()
 
-try:
-  loop = asyncio.new_event_loop()
-  thread = Thread(target=connect_object, args=(loop,))
-  thread.start()
-
-  import time
-  
+async def send_data():
   ### Aca ejecutamos la funcion principal
-  for i in range(20):
-    time.sleep(5)
+  for i in range(100):
+    await asyncio.sleep(5)
     if (resilient_object):
       resilient_object.send_data('hola' + str(i))
+try:
+  loop = asyncio.new_event_loop()
+  thread = Thread(target=connect_object, args=(loop,),)
+  thread.start()
+
+  asyncio.run(send_data())
 except KeyboardInterrupt:
   print('bye')
 

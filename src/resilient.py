@@ -36,6 +36,7 @@ class ResilientObject(object):
     self.listeners = {}
     self.channels = []
     self.on_channel_added=kwargs.get('on_channel_added')
+    self.connected = False
     
   
   async def add_listener(self, msg):
@@ -63,11 +64,12 @@ class ResilientObject(object):
     @peer.on('datachannel')
     def on_datachannel(channel):
       self.channels.append(channel)
-
+  
       @channel.on('message')
       def on_message(message):
         print(message)
         channel.send('pong')
+        self.connected = True
 
     if (args['type'] == 'offer'):
       ## set up local description and send answer
@@ -119,10 +121,14 @@ class ResilientObject(object):
       await self.add_ice_candidate(msg)
     return
 
-  def send_data(self, data):   
+  def send_data(self, data):
+    json_data = json.dumps({
+      'body': data,
+      'sender': self.id
+    })
+
     for channel in self.channels:
-      print('sending', data)
-      channel.send(str(data))
+      channel.send(json_data)
 
   async def connect(self, callback=None):
     data = {
@@ -143,6 +149,9 @@ class ResilientObject(object):
       try:
         data = await self.ws.recv()
         await self.on_message(data)
+
+        if (self.connected):
+          return
       except websockets.exceptions.ConnectionClosed:
         print('Websocket connection is closed')
         return
