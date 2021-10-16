@@ -4,9 +4,6 @@ import asyncio
 import os
 import aiohttp
 
-from aiortc import RTCIceCandidate, RTCPeerConnection, RTCSessionDescription, RTCConfiguration, RTCIceServer
-from aiortc.sdp import candidate_from_sdp
-
 class ResilientObject(object):
   @staticmethod
   async def get_device_token(uri, **kwargs):
@@ -33,76 +30,23 @@ class ResilientObject(object):
     self.name = kwargs['name']
     self.id = kwargs['id']
     self.ws = ws
-    self.listeners = {}
     self.channels = []
-    self.on_channel_added=kwargs.get('on_channel_added')
+    self.on_channel_added = kwargs.get('on_channel_added')
     self.connected = False
     
   
   async def add_listener(self, msg):
     peerId = msg.get('newListener')
 
-    if (peerId in self.listeners.keys()):
+    if (peerId in self.channels):
       return
 
-    server = RTCIceServer(urls='stun:stun.1.google.com:19302')
-    config = RTCConfiguration([server])
-    pc = RTCPeerConnection(configuration=config)
-    self.listeners[peerId] = pc
+    print('adding listener', peerId)
+    self.send_data({
+      type: 'ping',
+      message: 'Hello'
+    })
 
-
-  async def on_session_description(self, msg):
-    peerId = msg.get('peerId')
-    peer = self.listeners[peerId]
-    if (not peer):
-      return
-    
-    args = msg.get('sessionDescription')
-    description = RTCSessionDescription(**args)
-    await peer.setRemoteDescription(description)
-
-    @peer.on('datachannel')
-    def on_datachannel(channel):
-      self.channels.append(channel)
-  
-      @channel.on('message')
-      def on_message(message):
-        print(message)
-        channel.send('pong')
-        self.connected = True
-
-    if (args['type'] == 'offer'):
-      ## set up local description and send answer
-      answer = await peer.createAnswer()
-      await peer.setLocalDescription(answer)
-
-      local_description = peer.localDescription
-      data = {
-        "action": "objectsession",
-        "data": {
-          "id": self.id,
-          "peerId": peerId,
-          "sessionDescription": {
-            "sdp": local_description.sdp,
-            "type": local_description.type
-          }
-        },
-      }
-
-      dumped_data = json.dumps(data)
-      await self.ws.send(dumped_data)
-
-  async def add_ice_candidate(self, msg):
-    peerId = msg.get('peerId')
-    peer = self.listeners[peerId]
-
-    args = msg.get('iceCandidate')
-    candidate = candidate_from_sdp(args['candidate'])
-
-    candidate.sdpMid = args['sdpMid']
-    candidate.sdpMLineIndex = args['sdpMLineIndex']
-    
-    await peer.addIceCandidate(candidate)
     
   async def on_message(self, message):
     msg = json.loads(message)
@@ -112,23 +56,18 @@ class ResilientObject(object):
       print('New Listener Joined', msg.get('newListener'))
       await self.add_listener(msg)
 
-    if (event == 'session_description'):
-      print('setting up remote session description')
-      await self.on_session_description(msg)
-    
-    if (event == 'ice_candidate'):
-      print('adding ice candidate')
-      await self.add_ice_candidate(msg)
-    return
 
-  def send_data(self, data):
+  async def send_data(self, data):
     json_data = json.dumps({
-      'body': data,
-      'sender': self.id
+      'data': {
+        'data': data,
+        'id': self.id,
+      },
+      'action': 'objectdata'
     })
 
-    for channel in self.channels:
-      channel.send(json_data)
+    print("sending data")
+    await self.ws.send(json_data)
 
   async def connect(self, callback=None):
     data = {
